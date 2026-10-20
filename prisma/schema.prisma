@@ -1,0 +1,194 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+enum TestStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  GRADED
+  LATE
+}
+
+// 1. Core Users (Admin & Students)
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  studentProfile      StudentProfile?
+  createdTests        Test[]
+  createdAssignments  Assignment[]
+  createdNotes        Note[]
+
+  @@map("users")
+}
+
+// 2. Student Profile (Holds Course, Semester, Roll Number)
+model StudentProfile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name        String
+  rollNo      String   @unique
+  course      String   // e.g. 'BA', 'MA', 'BAPSY'
+  semester    String   // e.g. 'Semester 1', 'Semester 2'
+  parentPhone String
+  section     String?  @default("A")
+  attendance  Float    @default(90.0)
+  status      String   @default("Good") // 'Good', 'Warning', 'Inactive'
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  testSubmissions       TestSubmission[]
+  assignmentSubmissions AssignmentSubmission[]
+
+  @@map("student_profiles")
+}
+
+// 3. Tests & Quizzes
+model Test {
+  id          String      @id @default(uuid())
+  title       String
+  subject     String
+  course      String      // Course target: 'MA'
+  semester    String      // Semester target: 'Semester 1'
+  duration    Int         // In minutes
+  totalMarks  Int
+  status      TestStatus  @default(ACTIVE)
+  createdById String
+  createdBy   User        @relation(fields: [createdById], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  questions   Question[]
+  submissions TestSubmission[]
+
+  @@map("tests")
+}
+
+model Question {
+  id            String   @id @default(uuid())
+  testId        String
+  test          Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  questionText  String   @db.Text
+  options       Json     // Array of options: ["Option A", "Option B", ...]
+  correctOption Int      // Index: 0, 1, 2, or 3
+  marks         Int      @default(1)
+
+  @@map("questions")
+}
+
+// 4. Test Submissions & Result
+model TestSubmission {
+  id          String         @id @default(uuid())
+  testId      String
+  test        Test           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  answers     Json           // { questionId: selectedIndex }
+  score       Float
+  totalMarks  Int
+  percentage  Float
+  submittedAt DateTime       @default(now())
+
+  @@unique([testId, studentId])
+  @@map("test_submissions")
+}
+
+// 5. Notes & Study Documents
+model Note {
+  id          String   @id @default(uuid())
+  title       String
+  subject     String
+  course      String   // 'MA', 'BA'
+  semester    String   // 'Semester 1', etc.
+  description String?  @db.Text
+  fileUrl     String   // Cloudinary PDF / File URL
+  fileType    String?  @default("pdf")
+  fileSize    String?  @default("1.5 MB")
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("notes")
+}
+
+// 6. Assignments
+model Assignment {
+  id          String   @id @default(uuid())
+  title       String
+  subject     String
+  course      String   // 'MA'
+  semester    String   // 'Semester 1'
+  description String   @db.Text
+  dueDate     DateTime
+  fileUrl     String?  // Attachment document if any
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  submissions AssignmentSubmission[]
+
+  @@map("assignments")
+}
+
+// 7. Assignment Submissions
+model AssignmentSubmission {
+  id           String           @id @default(uuid())
+  assignmentId String
+  assignment   Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      StudentProfile   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fileUrl      String           // Cloudinary uploaded student PDF
+  fileName     String?
+  status       SubmissionStatus @default(SUBMITTED)
+  grade        String?
+  remarks      String?          @db.Text
+  submittedAt  DateTime         @default(now())
+  gradedAt     DateTime?
+
+  @@unique([assignmentId, studentId])
+  @@map("assignment_submissions")
+}
+
+// 8. Dynamic Courses and Subjects
+model Course {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  duration  Int      @default(3)
+  semesters Int      @default(6)
+  createdAt DateTime @default(now())
+
+  @@map("courses")
+}
+
+model Subject {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("subjects")
+}
