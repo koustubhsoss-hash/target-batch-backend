@@ -15,15 +15,39 @@ const settingRoutes = require('./routes/setting.routes');
 const app = express();
 
 // Security Middlewares
-app.use(helmet());
+app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(
   cors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      process.env.CLIENT_URL || 'http://localhost:5173',
-    ],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, postman)
+      if (!origin) return callback(null, true);
+
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'https://target-batch.netlify.app',
+      ];
+
+      if (process.env.CLIENT_URL && process.env.CLIENT_URL !== '*') {
+        allowedOrigins.push(process.env.CLIENT_URL);
+      }
+
+      // Allow if explicit match, or ends with .netlify.app / .onrender.com, or fallback allow
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.netlify.app') ||
+        origin.endsWith('.onrender.com') ||
+        process.env.NODE_ENV !== 'production'
+      ) {
+        return callback(null, true);
+      }
+
+      // Dynamic origin reflection allows credentials: true without wildcard error
+      return callback(null, true);
+    },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 );
 
