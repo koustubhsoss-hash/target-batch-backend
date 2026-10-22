@@ -52,23 +52,10 @@ const signup = async (req, res, next) => {
       return { ...user, studentProfile: profile };
     });
 
-    // Generate JWT token
-    const token = jwt.sign(
-      {
-        id: newUser.id,
-        role: newUser.role,
-        course: newUser.studentProfile.course,
-        semester: newUser.studentProfile.semester,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
-
     return sendSuccess(
       res,
-      'Student account registered successfully',
+      'Student account registered successfully. Please login with your email and password.',
       {
-        token,
         user: {
           id: newUser.id,
           name: newUser.studentProfile.name,
