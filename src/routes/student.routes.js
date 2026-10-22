@@ -7,6 +7,7 @@ const {
   updateStudent,
   updateStudentStatus,
   deleteStudent,
+  resetStudentPassword,
 } = require('../controllers/student.controller');
 const { authenticate } = require('../middlewares/auth.middleware');
 const { authorize } = require('../middlewares/role.middleware');
@@ -19,6 +20,7 @@ router.post('/', createStudent);
 router.get('/:id', getStudentById);
 router.put('/:id', updateStudent);
 router.patch('/:id/status', updateStudentStatus);
+router.patch('/:id/reset-password', resetStudentPassword);
 router.delete('/:id', deleteStudent);
 
 module.exports = router;

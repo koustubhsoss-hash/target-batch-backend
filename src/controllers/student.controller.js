@@ -52,6 +52,7 @@ const getStudents = async (req, res, next) => {
       section: s.section,
       attendance: `${s.attendance}%`,
       status: s.status,
+      loginPassword: s.loginPassword || 'pass123',
       avatar: s.user.avatar,
       testsCount: s._count.testSubmissions,
       assignmentsCount: s._count.assignmentSubmissions,
@@ -138,10 +139,11 @@ const createStudent = async (req, res, next) => {
           semester,
           parentPhone: parentPhone || '',
           section: section || 'A',
+          loginPassword: password || 'pass123',
         },
       });
 
-      return { ...profile, email: user.email, avatar: user.avatar };
+      return { ...profile, email: user.email, avatar: user.avatar, loginPassword: password || 'pass123' };
     });
 
     return sendSuccess(res, 'Student added successfully', { student: result }, 201);
@@ -220,6 +222,43 @@ const deleteStudent = async (req, res, next) => {
   }
 };
 
+// 7. PATCH /api/v1/students/:id/reset-password (Admin sets/resets student password)
+const resetStudentPassword = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 4) {
+      return sendError(res, 'New password must be at least 4 characters long', 400);
+    }
+
+    const student = await prisma.studentProfile.findUnique({ where: { id } });
+    if (!student) {
+      return sendError(res, 'Student not found', 404);
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: student.userId },
+        data: { password: hashedPassword },
+      }),
+      prisma.studentProfile.update({
+        where: { id },
+        data: { loginPassword: newPassword },
+      }),
+    ]);
+
+    return sendSuccess(res, `Password updated successfully to: ${newPassword}`, {
+      studentId: id,
+      loginPassword: newPassword,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getStudents,
   getStudentById,
@@ -227,4 +266,5 @@ module.exports = {
   updateStudent,
   updateStudentStatus,
   deleteStudent,
+  resetStudentPassword,
 };

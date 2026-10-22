@@ -46,6 +46,7 @@ const signup = async (req, res, next) => {
           course,
           semester,
           parentPhone: parentPhone || '',
+          loginPassword: password,
         },
       });
 
@@ -233,6 +234,13 @@ const changePassword = async (req, res, next) => {
       where: { id: req.user.id },
       data: { password: newHashedPassword },
     });
+
+    if (req.user.role === 'STUDENT') {
+      await prisma.studentProfile.update({
+        where: { userId: req.user.id },
+        data: { loginPassword: newPassword },
+      });
+    }
 
     return sendSuccess(res, 'Password changed successfully');
   } catch (error) {
