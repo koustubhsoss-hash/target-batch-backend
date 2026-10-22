@@ -74,6 +74,35 @@ const signup = async (req, res, next) => {
   }
 };
 
+const getUserDisplayName = (user) => {
+  if (user.role === 'STUDENT' && user.studentProfile?.name) {
+    return user.studentProfile.name;
+  }
+  if (!user.email) return 'User';
+
+  if (user.email.toLowerCase().includes('koustubh')) {
+    return 'Koustubh';
+  }
+  if (user.email.toLowerCase() === 'admin@targetbatch.com') {
+    return 'Admin';
+  }
+  const username = user.email.split('@')[0];
+  const clean = username
+    .replace(/[0-9]/g, '')
+    .split(/[._-]/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(' ');
+  return clean || (user.role === 'ADMIN' ? 'Teacher' : 'Student');
+};
+
+const getUserAvatar = (user, displayName) => {
+  if (user.avatar && !user.avatar.includes('photo-1494790108377-be9c29b29330')) {
+    return user.avatar;
+  }
+  return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0284c7&color=fff&bold=true`;
+};
+
 // 2. POST /api/v1/auth/login (Admin & Student Login)
 const login = async (req, res, next) => {
   try {
@@ -108,17 +137,20 @@ const login = async (req, res, next) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    const displayName = getUserDisplayName(user);
+    const avatar = getUserAvatar(user, displayName);
+
     return sendSuccess(res, 'Login successful', {
       token,
       user: {
         id: user.id,
-        name: user.role === 'ADMIN' ? 'Dr. Sarah Jenkins' : user.studentProfile?.name,
+        name: displayName,
         email: user.email,
         role: user.role,
         course: user.studentProfile?.course || null,
         semester: user.studentProfile?.semester || null,
         rollNo: user.studentProfile?.rollNo || null,
-        avatar: user.avatar,
+        avatar,
       },
     });
   } catch (error) {
@@ -130,10 +162,13 @@ const login = async (req, res, next) => {
 const getMe = async (req, res, next) => {
   try {
     const user = req.user;
+    const displayName = getUserDisplayName(user);
+    const avatar = getUserAvatar(user, displayName);
+
     return sendSuccess(res, 'User session fetched', {
       user: {
         id: user.id,
-        name: user.role === 'ADMIN' ? 'Dr. Sarah Jenkins' : user.studentProfile?.name,
+        name: displayName,
         email: user.email,
         role: user.role,
         course: user.studentProfile?.course || null,
@@ -142,7 +177,7 @@ const getMe = async (req, res, next) => {
         parentPhone: user.studentProfile?.parentPhone || null,
         attendance: user.studentProfile?.attendance || 90.0,
         status: user.studentProfile?.status || 'Good',
-        avatar: user.avatar,
+        avatar,
       },
     });
   } catch (error) {
