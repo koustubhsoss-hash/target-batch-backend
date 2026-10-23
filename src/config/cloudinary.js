@@ -1,6 +1,7 @@
 const cloudinary = require('cloudinary').v2;
 
-const isCloudinaryConfigured = Boolean(
+const hasDirectUrl = Boolean(process.env.CLOUDINARY_URL && !process.env.CLOUDINARY_URL.includes('<your_api_key>'));
+const hasSeparateVars = Boolean(
   process.env.CLOUDINARY_CLOUD_NAME &&
   process.env.CLOUDINARY_CLOUD_NAME !== 'your_cloudinary_cloud_name' &&
   process.env.CLOUDINARY_API_KEY &&
@@ -9,13 +10,16 @@ const isCloudinaryConfigured = Boolean(
   process.env.CLOUDINARY_API_SECRET !== 'your_cloudinary_api_secret'
 );
 
-if (isCloudinaryConfigured) {
+const isCloudinaryConfigured = hasDirectUrl || hasSeparateVars;
+
+if (hasSeparateVars) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
 }
+
 
 module.exports = {
   cloudinary,
