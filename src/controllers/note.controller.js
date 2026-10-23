@@ -1,10 +1,17 @@
 const prisma = require('../config/prisma');
-const cloudinary = require('../config/cloudinary');
+const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const { sendSuccess, sendError } = require('../utils/apiResponse');
 
 // Helper to upload buffer to Cloudinary
 const uploadToCloudinary = (fileBuffer, folder = 'target_batch_notes') => {
   return new Promise((resolve, reject) => {
+    if (!isCloudinaryConfigured) {
+      return reject(
+        new Error(
+          'Cloudinary is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in your backend environment variables (e.g. Render Dashboard).'
+        )
+      );
+    }
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder,
@@ -18,6 +25,7 @@ const uploadToCloudinary = (fileBuffer, folder = 'target_batch_notes') => {
     uploadStream.end(fileBuffer);
   });
 };
+
 
 // 1. GET /api/v1/notes (Strict Course & Semester Filtering for Student)
 const getNotes = async (req, res, next) => {

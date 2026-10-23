@@ -31,9 +31,24 @@ const getTests = async (req, res, next) => {
             submissions: true,
           },
         },
+        ...(user.role === 'STUDENT'
+          ? {
+              submissions: {
+                where: { studentId: user.studentProfile?.id },
+                select: {
+                  id: true,
+                  score: true,
+                  totalMarks: true,
+                  percentage: true,
+                  submittedAt: true,
+                },
+              },
+            }
+          : {}),
       },
       orderBy: { createdAt: 'desc' },
     });
+
 
     return sendSuccess(res, 'Tests fetched successfully', {
       count: tests.length,
@@ -73,19 +88,22 @@ const getTestById = async (req, res, next) => {
         return sendError(res, 'Access denied: Test not scheduled for your course/semester', 403);
       }
 
-      // Hide correct option while taking test
+      const hasAttempted = test.submissions.length > 0;
+
+      // Hide correct option while taking test, but reveal if student has submitted
       const sanitizedQuestions = test.questions.map((q) => ({
         id: q.id,
         questionText: q.questionText,
         options: q.options,
         marks: q.marks,
+        ...(hasAttempted ? { correctOption: q.correctOption } : {}),
       }));
 
       return sendSuccess(res, 'Test fetched', {
         test: {
           ...test,
           questions: sanitizedQuestions,
-          hasAttempted: test.submissions.length > 0,
+          hasAttempted,
           previousAttempt: test.submissions[0] || null,
         },
       });
