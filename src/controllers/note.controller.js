@@ -17,6 +17,8 @@ const uploadToCloudinary = (fileBuffer, folder = 'target_batch_notes') => {
       {
         folder,
         resource_type: 'auto',
+        type: 'upload',
+        access_mode: 'public',
       },
       (error, result) => {
         if (error) return reject(error);
