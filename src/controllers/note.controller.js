@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const { sendSuccess, sendError } = require('../utils/apiResponse');
+const { saveFileToDisk } = require('../middlewares/upload.middleware');
 
 // Helper to upload buffer to Cloudinary
 const uploadToCloudinary = (fileBuffer, folder = 'target_batch_notes') => {
@@ -106,8 +107,17 @@ const createNote = async (req, res, next) => {
 
     // If file provided via multer
     if (req.file) {
-      const uploadResult = await uploadToCloudinary(req.file.buffer, 'target_batch_notes');
-      fileUrl = uploadResult.secure_url;
+      try {
+        if (isCloudinaryConfigured) {
+          const uploadResult = await uploadToCloudinary(req.file.buffer, 'target_batch_notes');
+          fileUrl = uploadResult.secure_url;
+        } else {
+          fileUrl = saveFileToDisk(req.file.buffer, req.file.originalname, 'notes');
+        }
+      } catch (uploadErr) {
+        console.warn('Falling back to local disk storage for note:', uploadErr.message);
+        fileUrl = saveFileToDisk(req.file.buffer, req.file.originalname, 'notes');
+      }
       fileSize = `${(req.file.size / (1024 * 1024)).toFixed(1)} MB`;
     }
 

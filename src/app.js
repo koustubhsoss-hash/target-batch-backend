@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 const { sendError } = require('./utils/apiResponse');
 
 // Route imports
@@ -11,11 +12,13 @@ const noteRoutes = require('./routes/note.routes');
 const testRoutes = require('./routes/test.routes');
 const assignmentRoutes = require('./routes/assignment.routes');
 const settingRoutes = require('./routes/setting.routes');
+const syllabusRoutes = require('./routes/syllabus.routes');
 
 const app = express();
 
 // Security Middlewares
 app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -78,6 +81,7 @@ app.use('/api/v1/notes', noteRoutes);
 app.use('/api/v1/tests', testRoutes);
 app.use('/api/v1/assignments', assignmentRoutes);
 app.use('/api/v1/settings', settingRoutes);
+app.use('/api/v1/syllabus', syllabusRoutes);
 
 // 404 Route Handler
 app.use((req, res) => {

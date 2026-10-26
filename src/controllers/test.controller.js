@@ -8,16 +8,17 @@ const getTests = async (req, res, next) => {
     let whereClause = {};
 
     if (user.role === 'STUDENT') {
-      // 🔒 HARD ISOLATION: Student gets ONLY their course and semester active tests
+      // 🔒 Student gets active tests for their course
       whereClause = {
         course: user.studentProfile.course,
-        semester: user.studentProfile.semester,
         status: 'ACTIVE',
       };
     } else if (user.role === 'ADMIN') {
       const { course, semester, subject, status } = req.query;
       if (course && course !== 'All') whereClause.course = course;
-      if (semester && semester !== 'All') whereClause.semester = semester;
+      if (semester && semester !== 'All') {
+        whereClause.semester = { contains: semester };
+      }
       if (subject && subject !== 'All') whereClause.subject = subject;
       if (status && status !== 'All') whereClause.status = status;
     }
@@ -49,10 +50,20 @@ const getTests = async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    // Multi-semester matching filter for student
+    let returnedTests = tests;
+    if (user.role === 'STUDENT') {
+      const studentSem = (user.studentProfile.semester || '').toLowerCase().trim();
+      returnedTests = tests.filter((t) => {
+        if (!t.semester || t.semester === 'All' || t.semester.toLowerCase().includes('all')) return true;
+        const sems = t.semester.split(',').map((s) => s.toLowerCase().trim());
+        return sems.includes(studentSem) || t.semester.toLowerCase().includes(studentSem);
+      });
+    }
 
     return sendSuccess(res, 'Tests fetched successfully', {
-      count: tests.length,
-      tests,
+      count: returnedTests.length,
+      tests: returnedTests,
     });
   } catch (error) {
     next(error);
@@ -81,10 +92,12 @@ const getTestById = async (req, res, next) => {
 
     // Role check for students
     if (user.role === 'STUDENT') {
-      if (
-        test.course !== user.studentProfile.course ||
-        test.semester !== user.studentProfile.semester
-      ) {
+      const studentSem = (user.studentProfile.semester || '').toLowerCase().trim();
+      const testSem = (test.semester || '').toLowerCase();
+      const sems = testSem.split(',').map((s) => s.trim());
+      const semMatches = testSem === 'all' || testSem.includes('all') || sems.includes(studentSem) || testSem.includes(studentSem);
+
+      if (test.course !== user.studentProfile.course || !semMatches) {
         return sendError(res, 'Access denied: Test not scheduled for your course/semester', 403);
       }
 

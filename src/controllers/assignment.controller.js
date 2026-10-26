@@ -53,7 +53,11 @@ const getAssignments = async (req, res, next) => {
         },
         submissions: user.role === 'STUDENT' ? {
           where: { studentId: user.studentProfile.id },
-        } : false,
+        } : {
+          include: {
+            student: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
