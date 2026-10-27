@@ -167,26 +167,42 @@ const createTest = async (req, res, next) => {
   }
 };
 
-// 4. PUT /api/v1/tests/:id (Admin Full update)
+// 4. PUT /api/v1/tests/:id (Admin Full update including questions)
 const updateTest = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { title, subject, course, semester, duration, totalMarks } = req.body;
+    const { title, subject, course, semester, duration, totalMarks, questions } = req.body;
 
     const existing = await prisma.test.findUnique({ where: { id } });
     if (!existing) {
       return sendError(res, 'Test not found', 404);
     }
 
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (subject) updateData.subject = subject;
+    if (course) updateData.course = course;
+    if (semester) updateData.semester = semester;
+    if (duration) updateData.duration = Number(duration);
+    if (totalMarks) updateData.totalMarks = Number(totalMarks);
+
+    if (Array.isArray(questions) && questions.length > 0) {
+      await prisma.question.deleteMany({ where: { testId: id } });
+      updateData.questions = {
+        create: questions.map((q) => ({
+          questionText: q.questionText,
+          options: q.options,
+          correctOption: Number(q.correctOption ?? 0),
+          marks: Number(q.marks || 1),
+        })),
+      };
+    }
+
     const updated = await prisma.test.update({
       where: { id },
-      data: {
-        title,
-        subject,
-        course,
-        semester,
-        duration: Number(duration),
-        totalMarks: Number(totalMarks),
+      data: updateData,
+      include: {
+        questions: true,
       },
     });
 
