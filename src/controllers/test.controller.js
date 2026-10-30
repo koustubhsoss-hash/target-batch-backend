@@ -185,6 +185,9 @@ const updateTest = async (req, res, next) => {
     if (semester) updateData.semester = semester;
     if (duration) updateData.duration = Number(duration);
     if (totalMarks) updateData.totalMarks = Number(totalMarks);
+    if (req.body.status && ['DRAFT', 'ACTIVE', 'COMPLETED'].includes(req.body.status)) {
+      updateData.status = req.body.status;
+    }
 
     if (Array.isArray(questions) && questions.length > 0) {
       await prisma.question.deleteMany({ where: { testId: id } });
