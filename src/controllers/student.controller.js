@@ -77,6 +77,7 @@ const getStudentById = async (req, res, next) => {
       where: { id },
       include: {
         user: { select: { email: true, avatar: true, createdAt: true } },
+        documents: { orderBy: { createdAt: 'desc' } },
         testSubmissions: {
           include: { test: { select: { title: true, subject: true, totalMarks: true } } },
           orderBy: { submittedAt: 'desc' },

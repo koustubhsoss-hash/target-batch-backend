@@ -179,6 +179,9 @@ const getMe = async (req, res, next) => {
         semester: user.studentProfile?.semester || null,
         rollNo: user.studentProfile?.rollNo || null,
         parentPhone: user.studentProfile?.parentPhone || null,
+        fatherName: user.studentProfile?.fatherName || null,
+        motherName: user.studentProfile?.motherName || null,
+        enrollNo: user.studentProfile?.enrollNo || null,
         attendance: user.studentProfile?.attendance || 90.0,
         status: user.studentProfile?.status || 'Good',
         avatar,
@@ -202,12 +205,16 @@ const updateProfile = async (req, res, next) => {
       });
     }
 
-    if (req.user.role === 'STUDENT' && (name || parentPhone)) {
+    if (req.user.role === 'STUDENT') {
+      const { fatherName, motherName, enrollNo } = req.body;
       await prisma.studentProfile.update({
         where: { userId },
         data: {
           ...(name && { name }),
           ...(parentPhone && { parentPhone }),
+          ...(fatherName !== undefined && { fatherName: fatherName.trim() }),
+          ...(motherName !== undefined && { motherName: motherName.trim() }),
+          ...(enrollNo !== undefined && { enrollNo: enrollNo.trim().toUpperCase() }),
         },
       });
     }

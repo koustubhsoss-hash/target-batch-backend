@@ -53,6 +53,9 @@ model StudentProfile {
   course      String   // e.g. 'BA', 'MA', 'BAPSY'
   semester    String   // e.g. 'Semester 1', 'Semester 2'
   parentPhone String
+  fatherName  String?
+  motherName  String?
+  enrollNo    String?
   section     String?  @default("A")
   attendance  Float    @default(90.0)
   status      String   @default("Good") // 'Good', 'Warning', 'Inactive'
@@ -62,6 +65,8 @@ model StudentProfile {
 
   testSubmissions       TestSubmission[]
   assignmentSubmissions AssignmentSubmission[]
+  documents             StudentDocument[]
+  complaints            Complaint[]
 
   @@map("student_profiles")
 }
@@ -192,4 +197,76 @@ model Subject {
   createdAt DateTime @default(now())
 
   @@map("subjects")
+}
+
+// 9. Student Uploaded Documents (Marksheets, Certificates)
+model StudentDocument {
+  id          String         @id @default(uuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  name        String         // e.g. '10th Marksheet', 'Caste Certificate'
+  type        String         @default("Marksheet")
+  fileUrl     String         // Cloudinary URL
+  fileName    String?
+  fileSize    String?
+  status      String         @default("Pending Verification") // 'Pending Verification', 'Verified', 'Rejected'
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("student_documents")
+}
+
+// 10. Notices & Circulars (University Notice Board)
+model Notice {
+  id             String   @id @default(uuid())
+  title          String
+  category       String   @default("General")
+  targetCourse   String   @default("All")
+  targetSemester String   @default("All")
+  publishDate    DateTime @default(now())
+  isPinned       Boolean  @default(false)
+  content        String   @db.Text
+  attachmentName String?
+  attachmentUrl  String?  // Cloudinary PDF / Image URL
+  issuedBy       String   @default("Academic Admin")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("notices")
+}
+
+// 11. Help Desk & Complaints (Grievance Redressal)
+model Complaint {
+  id            String         @id @default(uuid())
+  ticketNumber  String         @unique
+  studentId     String
+  student       StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  category      String         @default("General")
+  subject       String
+  description   String         @db.Text
+  attachmentUrl String?        // Cloudinary URL
+  status        String         @default("Pending") // 'Pending', 'In Progress', 'Resolved'
+  priority      String         @default("Medium")
+  response      String?        @db.Text
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("complaints")
+}
+
+// 12. Video Classes
+model VideoClass {
+  id          String   @id @default(uuid())
+  title       String
+  subject     String
+  course      String
+  semester    String
+  videoUrl    String
+  duration    String?
+  faculty     String?
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("video_classes")
 }
