@@ -132,28 +132,49 @@ const getTestById = async (req, res, next) => {
 // 3. POST /api/v1/tests (Admin creates test with questions)
 const createTest = async (req, res, next) => {
   try {
-    const { title, subject, course, semester, duration, totalMarks, questions } = req.body;
+    const { title, subject, course, semester, duration, totalMarks, questions, status } = req.body;
 
     if (!title || !subject || !course || !semester || !duration || !totalMarks) {
       return sendError(res, 'Please provide all test metadata fields', 400);
     }
 
+    const parsedStatus = parseTestStatus(status) || 'ACTIVE';
+
+    const sanitizedQuestions = (questions || []).map((q) => {
+      let opts = [];
+      if (Array.isArray(q.options)) {
+        opts = q.options.map(String).filter(Boolean);
+      } else if (typeof q.options === 'string') {
+        try {
+          opts = JSON.parse(q.options);
+        } catch {
+          opts = [q.options];
+        }
+      }
+      if (opts.length === 0) {
+        opts = ['Option A', 'Option B'];
+      }
+
+      return {
+        questionText: String(q.questionText || 'Question').trim(),
+        options: opts,
+        correctOption: !isNaN(Number(q.correctOption)) ? Math.max(0, Math.min(Number(q.correctOption), opts.length - 1)) : 0,
+        marks: !isNaN(Number(q.marks)) ? Math.max(1, Number(q.marks)) : 1,
+      };
+    });
+
     const newTest = await prisma.test.create({
       data: {
-        title,
-        subject,
-        course,
-        semester,
+        title: String(title).trim(),
+        subject: String(subject).trim(),
+        course: String(course).trim(),
+        semester: String(semester).trim(),
         duration: Number(duration),
         totalMarks: Number(totalMarks),
+        status: parsedStatus,
         createdById: req.user.id,
         questions: {
-          create: (questions || []).map((q) => ({
-            questionText: q.questionText,
-            options: q.options,
-            correctOption: Number(q.correctOption),
-            marks: Number(q.marks || 1),
-          })),
+          create: sanitizedQuestions,
         },
       },
       include: {
@@ -166,12 +187,25 @@ const createTest = async (req, res, next) => {
     next(error);
   }
 };
+    next(error);
+  }
+};
 
-// 4. PUT /api/v1/tests/:id (Admin Full update including questions)
+// Helper to normalize and map test status values (supports INACTIVE -> DRAFT)
+const parseTestStatus = (rawStatus) => {
+  if (!rawStatus) return undefined;
+  const s = String(rawStatus).toUpperCase().trim();
+  if (s === 'ACTIVE') return 'ACTIVE';
+  if (s === 'INACTIVE' || s === 'DRAFT' || s === 'DISABLED') return 'DRAFT';
+  if (s === 'COMPLETED' || s === 'CLOSED' || s === 'ARCHIVED') return 'COMPLETED';
+  return undefined;
+};
+
+// 4. PUT /api/v1/tests/:id (Admin Full update including questions & status)
 const updateTest = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { title, subject, course, semester, duration, totalMarks, questions } = req.body;
+    const { title, subject, course, semester, duration, totalMarks, questions, status } = req.body;
 
     const existing = await prisma.test.findUnique({ where: { id } });
     if (!existing) {
@@ -179,25 +213,51 @@ const updateTest = async (req, res, next) => {
     }
 
     const updateData = {};
-    if (title) updateData.title = title;
-    if (subject) updateData.subject = subject;
-    if (course) updateData.course = course;
-    if (semester) updateData.semester = semester;
-    if (duration) updateData.duration = Number(duration);
-    if (totalMarks) updateData.totalMarks = Number(totalMarks);
-    if (req.body.status && ['DRAFT', 'ACTIVE', 'COMPLETED'].includes(req.body.status)) {
-      updateData.status = req.body.status;
+    if (title && String(title).trim()) updateData.title = String(title).trim();
+    if (subject && String(subject).trim()) updateData.subject = String(subject).trim();
+    if (course && String(course).trim()) updateData.course = String(course).trim();
+    if (semester && String(semester).trim()) updateData.semester = String(semester).trim();
+
+    if (duration !== undefined && !isNaN(Number(duration)) && Number(duration) > 0) {
+      updateData.duration = Number(duration);
+    }
+    if (totalMarks !== undefined && !isNaN(Number(totalMarks)) && Number(totalMarks) > 0) {
+      updateData.totalMarks = Number(totalMarks);
+    }
+
+    const parsedStatus = parseTestStatus(status);
+    if (parsedStatus) {
+      updateData.status = parsedStatus;
     }
 
     if (Array.isArray(questions) && questions.length > 0) {
+      // First clear old questions
       await prisma.question.deleteMany({ where: { testId: id } });
+
+      // Clean & format new questions
       updateData.questions = {
-        create: questions.map((q) => ({
-          questionText: q.questionText,
-          options: q.options,
-          correctOption: Number(q.correctOption ?? 0),
-          marks: Number(q.marks || 1),
-        })),
+        create: questions.map((q) => {
+          let opts = [];
+          if (Array.isArray(q.options)) {
+            opts = q.options.map(String).filter(Boolean);
+          } else if (typeof q.options === 'string') {
+            try {
+              opts = JSON.parse(q.options);
+            } catch {
+              opts = [q.options];
+            }
+          }
+          if (opts.length === 0) {
+            opts = ['Option A', 'Option B'];
+          }
+
+          return {
+            questionText: String(q.questionText || 'Question').trim(),
+            options: opts,
+            correctOption: !isNaN(Number(q.correctOption)) ? Math.max(0, Math.min(Number(q.correctOption), opts.length - 1)) : 0,
+            marks: !isNaN(Number(q.marks)) ? Math.max(1, Number(q.marks)) : 1,
+          };
+        }),
       };
     }
 
@@ -215,22 +275,33 @@ const updateTest = async (req, res, next) => {
   }
 };
 
-// 5. PATCH /api/v1/tests/:id/status (Admin change status: DRAFT | ACTIVE | COMPLETED)
+// 5. PATCH /api/v1/tests/:id/status (Admin change status: ACTIVE | INACTIVE / DRAFT | COMPLETED)
 const updateTestStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!['DRAFT', 'ACTIVE', 'COMPLETED'].includes(status)) {
-      return sendError(res, 'Invalid test status value', 400);
+    const parsedStatus = parseTestStatus(status);
+    if (!parsedStatus) {
+      return sendError(res, 'Invalid test status value. Allowed: ACTIVE, INACTIVE (DRAFT), COMPLETED', 400);
+    }
+
+    const existing = await prisma.test.findUnique({ where: { id } });
+    if (!existing) {
+      return sendError(res, 'Test not found', 404);
     }
 
     const updated = await prisma.test.update({
       where: { id },
-      data: { status },
+      data: { status: parsedStatus },
+      include: {
+        _count: {
+          select: { questions: true, submissions: true },
+        },
+      },
     });
 
-    return sendSuccess(res, 'Test status updated', { test: updated });
+    return sendSuccess(res, `Test status updated to ${parsedStatus}`, { test: updated });
   } catch (error) {
     next(error);
   }
