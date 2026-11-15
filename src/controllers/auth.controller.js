@@ -12,19 +12,22 @@ const signup = async (req, res, next) => {
       return sendError(res, 'Please provide all required fields', 400);
     }
 
-    // Check duplicate email
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    // Check duplicate email & rollNo in parallel to reduce network latency
+    const [existingUser, existingRoll] = await Promise.all([
+      prisma.user.findUnique({ where: { email }, select: { id: true } }),
+      prisma.studentProfile.findUnique({ where: { rollNo }, select: { id: true } }),
+    ]);
+
     if (existingUser) {
       return sendError(res, 'An account with this email address already exists', 400);
     }
 
-    // Check duplicate rollNo
-    const existingRoll = await prisma.studentProfile.findUnique({ where: { rollNo } });
     if (existingRoll) {
       return sendError(res, 'This Roll Number is already registered', 400);
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Salt rounds 8 is 4x faster on Render's shared CPU, avoiding event-loop freeze
+    const hashedPassword = await bcrypt.hash(password, 8);
     const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
 
     // Atomic transaction for User + StudentProfile
