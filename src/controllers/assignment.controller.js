@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const { sendSuccess, sendError } = require('../utils/apiResponse');
+const { matchesTarget, storeUploadedFile } = require('../utils/fileUpload');
 
 // Helper to stream upload student assignment
 const uploadToCloudinary = (fileBuffer, folder = 'target_batch_assignments') => {
@@ -34,14 +35,14 @@ const getAssignments = async (req, res, next) => {
     let whereClause = {};
 
     if (user.role === 'STUDENT') {
-      whereClause = {
-        course: user.studentProfile.course,
-        semester: user.studentProfile.semester,
-      };
+      if (!user.studentProfile) {
+        return sendSuccess(res, 'Assignments fetched successfully', { count: 0, assignments: [] });
+      }
+      // Course/semester matching is done below so that 'All' and multi-semester targets work
     } else if (user.role === 'ADMIN') {
       const { course, semester, subject } = req.query;
       if (course && course !== 'All') whereClause.course = course;
-      if (semester && semester !== 'All') whereClause.semester = semester;
+      if (semester && semester !== 'All') whereClause.semester = { contains: semester };
       if (subject && subject !== 'All') whereClause.subject = subject;
     }
 
@@ -62,9 +63,15 @@ const getAssignments = async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    let result = assignments;
+    if (user.role === 'STUDENT') {
+      const { course, semester } = user.studentProfile;
+      result = assignments.filter((a) => matchesTarget(a.course, course) && matchesTarget(a.semester, semester));
+    }
+
     return sendSuccess(res, 'Assignments fetched successfully', {
-      count: assignments.length,
-      assignments,
+      count: result.length,
+      assignments: result,
     });
   } catch (error) {
     next(error);
@@ -82,10 +89,10 @@ const createAssignment = async (req, res, next) => {
 
     const newAssignment = await prisma.assignment.create({
       data: {
-        title,
-        subject,
-        course,
-        semester,
+        title: String(title).trim(),
+        subject: String(subject).trim(),
+        course: String(course).trim(),
+        semester: String(semester).trim(),
         dueDate: new Date(dueDate),
         description: description || '',
         createdById: req.user.id,
@@ -143,14 +150,18 @@ const submitAssignment = async (req, res, next) => {
       return sendError(res, 'Only students can submit assignments', 403);
     }
 
-    let fileUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
-    let fileName = 'assignment_submission.pdf';
-
-    if (req.file) {
-      const uploadResult = await uploadToCloudinary(req.file.buffer, 'target_batch_submissions');
-      fileUrl = uploadResult.secure_url;
-      fileName = req.file.originalname;
+    if (!req.file) {
+      return sendError(res, 'Please attach your assignment file', 400);
     }
+
+    const assignment = await prisma.assignment.findUnique({ where: { id } });
+    if (!assignment) {
+      return sendError(res, 'Assignment not found', 404);
+    }
+
+    const stored = await storeUploadedFile(req.file, 'target_batch_submissions');
+    const fileUrl = stored.url;
+    const fileName = stored.name;
 
     const submission = await prisma.assignmentSubmission.upsert({
       where: {

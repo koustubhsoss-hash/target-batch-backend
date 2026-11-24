@@ -14,6 +14,8 @@ const assignmentRoutes = require('./routes/assignment.routes');
 const settingRoutes = require('./routes/setting.routes');
 const syllabusRoutes = require('./routes/syllabus.routes');
 const studentDocRoutes = require('./routes/studentDoc.routes');
+const noticeRoutes = require('./routes/notice.routes');
+const complaintRoutes = require('./routes/complaint.routes');
 
 const app = express();
 
@@ -84,6 +86,8 @@ app.use('/api/v1/assignments', assignmentRoutes);
 app.use('/api/v1/settings', settingRoutes);
 app.use('/api/v1/syllabus', syllabusRoutes);
 app.use('/api/v1/student-docs', studentDocRoutes);
+app.use('/api/v1/notices', noticeRoutes);
+app.use('/api/v1/complaints', complaintRoutes);
 
 // 404 Route Handler
 app.use((req, res) => {

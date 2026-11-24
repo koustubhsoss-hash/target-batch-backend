@@ -187,9 +187,6 @@ const createTest = async (req, res, next) => {
     next(error);
   }
 };
-    next(error);
-  }
-};
 
 // Helper to normalize and map test status values (supports INACTIVE -> DRAFT)
 const parseTestStatus = (rawStatus) => {
@@ -231,35 +228,48 @@ const updateTest = async (req, res, next) => {
     }
 
     if (Array.isArray(questions) && questions.length > 0) {
-      // First clear old questions
-      await prisma.question.deleteMany({ where: { testId: id } });
-
-      // Clean & format new questions
-      updateData.questions = {
-        create: questions.map((q) => {
-          let opts = [];
-          if (Array.isArray(q.options)) {
-            opts = q.options.map(String).filter(Boolean);
-          } else if (typeof q.options === 'string') {
-            try {
-              opts = JSON.parse(q.options);
-            } catch {
-              opts = [q.options];
-            }
+      // Update questions IN PLACE (keep their ids) so that answers already submitted by
+      // students — stored as { questionId: optionIndex } — still point at the right question.
+      const cleaned = questions.map((q) => {
+        let opts = [];
+        if (Array.isArray(q.options)) {
+          opts = q.options.map(String).filter(Boolean);
+        } else if (typeof q.options === 'string') {
+          try {
+            opts = JSON.parse(q.options);
+          } catch {
+            opts = [q.options];
           }
-          if (opts.length === 0) {
-            opts = ['Option A', 'Option B'];
-          }
+        }
+        if (opts.length === 0) {
+          opts = ['Option A', 'Option B'];
+        }
+        return {
+          id: q.id,
+          questionText: String(q.questionText || 'Question').trim(),
+          options: opts,
+          correctOption: !isNaN(Number(q.correctOption)) ? Math.max(0, Math.min(Number(q.correctOption), opts.length - 1)) : 0,
+          marks: !isNaN(Number(q.marks)) ? Math.max(1, Number(q.marks)) : 1,
+        };
+      });
 
-          return {
-            questionText: String(q.questionText || 'Question').trim(),
-            options: opts,
-            correctOption: !isNaN(Number(q.correctOption)) ? Math.max(0, Math.min(Number(q.correctOption), opts.length - 1)) : 0,
-            marks: !isNaN(Number(q.marks)) ? Math.max(1, Number(q.marks)) : 1,
-          };
-        }),
-      };
+      const existingQs = await prisma.question.findMany({ where: { testId: id }, select: { id: true } });
+      const existingIds = new Set(existingQs.map((q) => q.id));
+      const keptIds = new Set(cleaned.filter((q) => q.id && existingIds.has(q.id)).map((q) => q.id));
+
+      await prisma.$transaction([
+        prisma.question.deleteMany({ where: { testId: id, id: { notIn: [...keptIds] } } }),
+        ...cleaned.map(({ id: qid, ...data }) =>
+          qid && keptIds.has(qid)
+            ? prisma.question.update({ where: { id: qid }, data })
+            : prisma.question.create({ data: { ...data, testId: id } })
+        ),
+      ]);
+      updateData.__regrade = true;
     }
+
+    const shouldRegrade = Boolean(updateData.__regrade);
+    delete updateData.__regrade;
 
     const updated = await prisma.test.update({
       where: { id },
@@ -268,6 +278,25 @@ const updateTest = async (req, res, next) => {
         questions: true,
       },
     });
+
+    // If questions / answer key changed, recalculate marks of students who already submitted
+    if (shouldRegrade) {
+      const subs = await prisma.testSubmission.findMany({ where: { testId: id } });
+      for (const sub of subs) {
+        const answers = (typeof sub.answers === 'string' ? JSON.parse(sub.answers || '{}') : sub.answers) || {};
+        const score = updated.questions.reduce(
+          (sum, q) => (answers[q.id] !== undefined && Number(answers[q.id]) === q.correctOption ? sum + q.marks : sum),
+          0
+        );
+        const percentage = updated.totalMarks ? Number(((score / updated.totalMarks) * 100).toFixed(1)) : 0;
+        if (score !== sub.score || updated.totalMarks !== sub.totalMarks) {
+          await prisma.testSubmission.update({
+            where: { id: sub.id },
+            data: { score, totalMarks: updated.totalMarks, percentage },
+          });
+        }
+      }
+    }
 
     return sendSuccess(res, 'Test updated successfully', { test: updated });
   } catch (error) {
@@ -410,15 +439,18 @@ const getTestResults = async (req, res, next) => {
           include: {
             student: {
               select: {
+                id: true,
                 name: true,
                 rollNo: true,
+                enrollNo: true,
                 course: true,
                 semester: true,
               },
             },
           },
-          orderBy: { score: 'desc' },
+          orderBy: [{ score: 'desc' }, { submittedAt: 'asc' }],
         },
+        questions: true,
       },
     });
 
@@ -428,7 +460,11 @@ const getTestResults = async (req, res, next) => {
 
     return sendSuccess(res, 'Test results leaderboard fetched', {
       testTitle: test.title,
+      subject: test.subject,
+      course: test.course,
+      semester: test.semester,
       totalMarks: test.totalMarks,
+      questions: test.questions,
       submissionsCount: test.submissions.length,
       submissions: test.submissions,
     });
