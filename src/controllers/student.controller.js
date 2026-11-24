@@ -52,7 +52,6 @@ const getStudents = async (req, res, next) => {
       section: s.section,
       attendance: `${s.attendance}%`,
       status: s.status,
-      loginPassword: s.loginPassword || 'pass123',
       avatar: s.user.avatar,
       testsCount: s._count.testSubmissions,
       assignmentsCount: s._count.assignmentSubmissions,
@@ -93,7 +92,8 @@ const getStudentById = async (req, res, next) => {
       return sendError(res, 'Student not found', 404);
     }
 
-    return sendSuccess(res, 'Student profile fetched', { student });
+    const { loginPassword, ...safeStudent } = student;
+    return sendSuccess(res, 'Student profile fetched', { student: safeStudent });
   } catch (error) {
     next(error);
   }
@@ -140,11 +140,12 @@ const createStudent = async (req, res, next) => {
           semester,
           parentPhone: parentPhone || '',
           section: section || 'A',
-          loginPassword: password || 'pass123',
+          loginPassword: null, // never store plain-text passwords
         },
       });
 
-      return { ...profile, email: user.email, avatar: user.avatar, loginPassword: password || 'pass123' };
+      const { loginPassword, ...safeProfile } = profile;
+      return { ...safeProfile, email: user.email, avatar: user.avatar };
     });
 
     return sendSuccess(res, 'Student added successfully', { student: result }, 201);
@@ -177,7 +178,8 @@ const updateStudent = async (req, res, next) => {
       },
     });
 
-    return sendSuccess(res, 'Student updated successfully', { student: updated });
+    const { loginPassword: _p1, ...safeUpdated } = updated;
+    return sendSuccess(res, 'Student updated successfully', { student: safeUpdated });
   } catch (error) {
     next(error);
   }
@@ -198,7 +200,8 @@ const updateStudentStatus = async (req, res, next) => {
       data: { status },
     });
 
-    return sendSuccess(res, 'Student status updated', { student: updated });
+    const { loginPassword: _p2, ...safeUpdated } = updated;
+    return sendSuccess(res, 'Student status updated', { student: safeUpdated });
   } catch (error) {
     next(error);
   }
@@ -247,14 +250,11 @@ const resetStudentPassword = async (req, res, next) => {
       }),
       prisma.studentProfile.update({
         where: { id },
-        data: { loginPassword: newPassword },
+        data: { loginPassword: null },
       }),
     ]);
 
-    return sendSuccess(res, `Password updated successfully to: ${newPassword}`, {
-      studentId: id,
-      loginPassword: newPassword,
-    });
+    return sendSuccess(res, 'Password updated successfully', { studentId: id });
   } catch (error) {
     next(error);
   }

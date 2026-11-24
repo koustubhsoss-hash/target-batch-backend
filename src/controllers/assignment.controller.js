@@ -1,32 +1,6 @@
 const prisma = require('../config/prisma');
-const { cloudinary, isCloudinaryConfigured } = require('../config/cloudinary');
 const { sendSuccess, sendError } = require('../utils/apiResponse');
 const { matchesTarget, storeUploadedFile } = require('../utils/fileUpload');
-
-// Helper to stream upload student assignment
-const uploadToCloudinary = (fileBuffer, folder = 'target_batch_assignments') => {
-  return new Promise((resolve, reject) => {
-    if (!isCloudinaryConfigured) {
-      return reject(
-        new Error(
-          'Cloudinary is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in your backend environment variables (e.g. Render Dashboard).'
-        )
-      );
-    }
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'auto',
-      },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result);
-      }
-    );
-    uploadStream.end(fileBuffer);
-  });
-};
-
 
 // 1. GET /api/v1/assignments (Auto-filtered for student)
 const getAssignments = async (req, res, next) => {
@@ -56,7 +30,9 @@ const getAssignments = async (req, res, next) => {
           where: { studentId: user.studentProfile.id },
         } : {
           include: {
-            student: true,
+            student: {
+              select: { id: true, name: true, rollNo: true, enrollNo: true, course: true, semester: true, section: true },
+            },
           },
         },
       },

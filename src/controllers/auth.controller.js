@@ -49,7 +49,7 @@ const signup = async (req, res, next) => {
           course,
           semester,
           parentPhone: parentPhone || '',
-          loginPassword: password,
+          loginPassword: null, // never store plain-text passwords
         },
       });
 
@@ -248,7 +248,7 @@ const changePassword = async (req, res, next) => {
     if (req.user.role === 'STUDENT') {
       await prisma.studentProfile.update({
         where: { userId: req.user.id },
-        data: { loginPassword: newPassword },
+        data: { loginPassword: null },
       });
     }
 
